@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# To use:
+#  Read the warnings on: http://dev.carbon-project.org/debian/wine-unstable/
+#  Run as root or with sudo
+#  This will use arch to automatically guess your architecture, but you may
+#   override it by passing the architecture in the command line. Either: amd64
+#   or i386
+
+# Run as root!
+if [ $(id -u) -ne 0 ]; then
+    echo "$0 must be run as root"
+    exit 1
+fi
+
+if [ "$1" == 'amd64' ] || [ "$1" == 'i386' ]; then arch="$1"
+elif [ "$1" == '64' ]; then arch="amd64"
+elif [ "$1" == '32' ]; then arch="i386"
+elif [ -n "$1" ]; then echo "Unknown/unusable architecture"; exit 1
+else
+	arch=`arch || uname -m`
+	if [ "$arch" == "x86_64" ]; then arch='amd64'
+	elif [ "${arch:0:1}" == "i" ] && [ "${arch:2}" == "86" ]; then arch='i386'
+	fi
+fi
+cd /tmp
+wget --base="http://dev.carbon-project.org/debian/wine-unstable/" -nd \
+ "http://dev.carbon-project.org/debian/wine-unstable/" -F -c \
+ -A "_$arch.deb" -e robots=off --ignore-tags=link -r -l 1
+dpkg -i libwine-*.deb wine*.deb
+rm libwine-*.deb wine*.deb

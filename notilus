@@ -1,0 +1,184 @@
+#!/bin/bash
+if [ -z "$*" ]; then
+	echo "$0 by Wa <logicplace.com>"
+	echo "Manages stuff in regards to Nautilus derivatives."
+	echo "Usage: $0 reg X as Y [PRIORITY]"
+	echo "   Register X as an alternative for Y. Must run as root."
+	echo "   X and Y can be: nautilus nemo caja"
+	echo "   Priority for the alternative, 10 by default."
+	echo "Usage: $0 sync from X [to Y]"
+	echo "   Sync preferences between derivatives, using X as a base."
+	echo "   By default, it syncs to all, but you can choose a specific one."
+	exit 0
+fi
+
+verify() {
+	if [ "$1" != "nautilus" ] && [ "$1" != "nemo" ] && [ "$1" != "caja" ]; then
+		echo "Must be one of: nautilus nemo caja">&2
+		exit 2
+	fi
+}
+
+merge() {
+	if [ ! -f $1.txt ]; then gsettings list-keys $1 | sort>$1.txt; fi
+	gsettings list-keys $2 | sort>$2.txt
+	comm --nocheck-order -12 $1.txt $2.txt | while read line; do
+		setting=`gsettings get $1 $line`
+		gsettings set $2 $line "$setting"
+	done
+}
+
+touri() {
+	if [ -n "$(which urlencode)" ]; then
+		echo "file://"`urlencode -m "${1:1:-1}"`
+	else
+		echo "Please install urlencode: sudo apt-get install gridsite-clients"
+		exit 3
+	fi
+}
+
+fromuri() {
+	if [ -n "$(which urlencode)" ]; then
+		path=`urlencode -d "${1:1:-1}"`
+		echo ${path:7}
+	else
+		echo "Please install urlencode: sudo apt-get install gridsite-clients"
+		exit 3
+	fi
+}
+
+if [ "$1" == "reg" ]; then
+	# Run as root!
+	if [[ $(/usr/bin/id -u) -ne 0 ]]; then
+		echo "$0 must be run as root">&2
+		exit 1
+	fi
+
+	# Collect arguments...
+	adding="$2"
+	if [ "$3" == "as" ]; then
+		to="$4"
+		priority=$5
+	else
+		to="$3"
+		priority=$4
+	fi
+
+	if [ "${adding:0:1}" != "/" ]; then
+		verify "$adding"
+		adding=`which $adding`
+	fi
+
+	verify "$to"
+	if [ -z "$priority" ]; then priority=10; fi
+
+	# Check if it was already registered.
+	listing=`update-alternatives --list "$to" 2>/dev/null`
+	any=$?
+	if [ $any -eq 0 ]; then
+		exists=`echo "$listing" | grep $adding`
+		if [ -n "$exists" ]; then
+			echo "Entry for $adding already exists in $to. Nothing to do."
+			exit 0
+		fi
+	elif [ $any -eq 2 ]; then
+		# Must create initial entry.
+		bin=`which $to`
+		mkdir /opt/nautilus 2>/dev/null
+		mv "$bin" /opt/nautilus
+		update-alternatives "$bin" $to /opt/nautilus/$to 10
+	else
+		bin=`update-alternatives --query $to | grep "Link: " | sed -e 's/Link: //'`
+	fi
+
+	# Add own registration...
+	update-alternatives "$bin" $to "$adding" $priority
+	exit 0
+elif [ "$1" == "sync" ]; then
+	# Collect arguments...
+	if [ "$2" == "from" ]; then from=$3
+	elif [ "$2" == "to" ]; then to=$3
+	fi
+	if [ "$4" == "from" ]; then from=$5
+	elif [ "$4" == "to" ]; then to=$5
+	fi
+	verify "$from"
+	if [ -n "$to" ]; then verify "$to"; fi
+
+	# Dumping stuff in a tmp directory.
+	mkdir /tmp/notilus 2>/dev/null
+	cd /tmp/notilus
+
+	# Sync common keys...
+	if [ $from == nautilus ]; then
+		if [ -z "$to" ] || [ $to == nemo ]; then
+			merge org.gnome.nautilus.desktop org.nemo.desktop
+			merge org.gnome.nautilus.preferences org.nemo.preferences
+			merge org.gnome.nautilus.icon-view org.nemo.icon-view
+			merge org.gnome.nautilus.list-view org.nemo.list-view
+			merge org.gnome.nautilus.window-state org.nemo.window-state
+		fi
+		if [ -z "$to" ] || [ $to == caja ]; then
+			merge org.gnome.nautilus.desktop org.mate.caja.desktop
+			merge org.gnome.nautilus.preferences org.mate.caja.preferences
+			merge org.gnome.nautilus.icon-view org.mate.caja.icon-view
+			merge org.gnome.nautilus.list-view org.mate.caja.list-view
+			merge org.gnome.nautilus.window-state org.mate.caja.window-state
+			merge org.gnome.desktop.default-applications.office.calendar org.mate.applications-office.calendar
+			merge org.gnome.desktop.default-applications.office.tasks org.mate.applications-office.tasks
+			merge org.gnome.desktop.default-applications.terminal org.mate.applications-terminal
+			merge org.gnome.desktop.background org.mate.background
+			background=`gsettings get org.gnome.desktop.background picture-uri`
+			background=`fromuri "$background"`
+			gsettings set org.mate.background picture-filename "$background"
+		fi
+	elif [ $from == nemo ]; then
+		if [ -z "$to" ] || [ $to == nautilus ]; then
+			merge org.mate.caja.desktop org.gnome.nautilus.desktop
+			merge org.mate.caja.preferences org.gnome.nautilus.preferences
+			merge org.mate.caja.icon-view org.gnome.nautilus.icon-view
+			merge org.mate.caja.list-view org.gnome.nautilus.list-view
+			merge org.mate.caja.window-state org.gnome.nautilus.window-state
+		fi
+		if [ -z "$to" ] || [ $to == caja ]; then
+			merge org.nemo.desktop org.mate.caja.desktop
+			merge org.nemo.preferences org.mate.caja.preferences
+			merge org.nemo.icon-view org.mate.caja.icon-view
+			merge org.nemo.list-view org.mate.caja.list-view
+			merge org.nemo.window-state org.mate.caja.window-state
+			merge org.gnome.desktop.default-applications.office.calendar org.mate.applications-office.calendar
+			merge org.gnome.desktop.default-applications.office.tasks org.mate.applications-office.tasks
+			merge org.gnome.desktop.default-applications.terminal org.mate.applications-terminal
+			merge org.gnome.desktop.background org.mate.background
+			background=`gsettings get org.gnome.desktop.background picture-uri`
+			background=`fromuri "$background"`
+			gsettings set org.mate.background picture-filename "$background"
+		fi
+	elif [ $from == caja ]; then
+		if [ -z "$to" ] || [ $to == nautilus ]; then
+			merge org.mate.caja.desktop org.gnome.nautilus.desktop
+			merge org.mate.caja.preferences org.gnome.nautilus.preferences
+			merge org.mate.caja.icon-view org.gnome.nautilus.icon-view
+			merge org.mate.caja.list-view org.gnome.nautilus.list-view
+			merge org.mate.caja.window-state org.gnome.nautilus.window-state
+		fi
+		if [ -z "$to" ] || [ $to == nemo ]; then
+			merge org.mate.caja.desktop org.nemo.desktop
+			merge org.mate.caja.preferences org.nemo.preferences
+			merge org.mate.caja.icon-view org.nemo.icon-view
+			merge org.mate.caja.list-view org.nemo.list-view
+			merge org.mate.caja.window-state org.nemo.window-state
+		fi
+		merge org.mate.applications-office.calendar org.gnome.desktop.default-applications.office.calendar
+		merge org.mate.applications-office.tasks org.gnome.desktop.default-applications.office.tasks
+		merge org.mate.applications-terminal org.gnome.desktop.default-applications.terminal
+		merge org.mate.background org.gnome.desktop.background
+		background=`gsettings get org.mate.background picture-filename`
+		background=`touri "$background"`
+		gsettings set org.gnome.desktop.background picture-uri "$background"
+	fi
+	exit 0
+else
+	echo "Unknown verb $1"
+	exit 2
+fi

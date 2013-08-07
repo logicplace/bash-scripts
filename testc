@@ -1,0 +1,52 @@
+#!/bin/bash
+n="
+"
+name="/tmp/ctest"
+code="#include <stdio.h>$n"
+suffix=
+cmdline=
+while [ -n "$1" ]; do
+	if [ "${1:0:1}" == "-" ]; then
+		if [ "$1" == "--" ]; then
+			shift
+			cmdline="$@"
+		elif [ "$1" == "-m" ]; then
+			code="${code}int main(int argc, char **argv) {$n"
+			suffix="return 0;$n}$n"
+		elif [ "$1" == "-d" ]; then
+			idx=1
+			while [ -e "$name$idx" ]; do rm "$name$idx"; done
+			exit 0
+		elif [ "$1" == "-?" ] || [ "$1" == "-h" ]; then
+			echo "TestC by Wa (logicplace.com)"
+			echo "Usage: testc [options] includes [-- commandline]"
+			echo "Options:"
+			echo " -m  Write the main function for you. Code you write goes inside automatically."
+			echo " -d  Delete test executables and exit."
+			echo ""
+			echo "Includes should be a list of header files you wish to include. It will decide"
+			echo "whether to include local or lib for you."
+			echo ""
+			echo "Commandline is passed to the application when run after compilation."
+			exit 0
+		fi
+	elif [ -e "$1" ]; then
+		code="$code#include \"$1\"$n"
+	else
+		code="$code#include <$1>$n"
+	fi
+	shift
+done
+
+code="$code"`cat`"$n$suffix"
+
+idx=1
+while [ -e "$name$idx" ]; do idx=$((idx + 1)); done
+
+echo "Compiling to \"$name$idx\"..."
+echo "$code" | gcc -o "$name$idx" -x c -
+
+echo "Running: "$name$idx $cmdline
+if [ $? == 0 ]; then
+	$name$idx $cmdline
+fi

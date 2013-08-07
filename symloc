@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ -n "$1" ]; then
+	loc=`locate "$1"`
+	for i in $loc; do 
+		ls -l "$i" | sed -e "s/^\([^ ]* \)\{7\}\(.*\)$/\2/"
+	done
+fi

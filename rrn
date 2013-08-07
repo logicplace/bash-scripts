@@ -1,0 +1,60 @@
+#!/bin/bash
+
+oldcd=
+nosafe=1
+if [ "$3" == "-s" ]; then
+	echo "Running in safe mode, will not rename files."
+	nosafe=0;
+elif [ "$3" == "-c" ]; then
+	oldcd=`pwd`
+	cd "$4"
+fi
+
+if [ "$4" == "-c" ]; then
+	oldcd=`pwd`
+	cd "$5"
+fi
+
+if [ $# -ge 2 ]; then
+	find='^'`echo "$1" | sed 's/\*-\(.\)$/\\\\([^\1]*\\\\)\1/g' | sed 's/\*/\\\\(.*\\\\)/g' | sed 's/\?/\\\\(.\\\\)/g' | sed 's#/#\\\\/#'`'$'
+	
+	repl="$2"
+	int=1
+	while true; do
+		y=`expr index "$repl" "&"`
+		x=`expr index "$repl" "*"`
+		if [ $y -ne 0 ] && [ $y -lt $x ]; then
+			repl=`echo "$repl" | sed 's/&//'`
+		else
+			if [ $x -eq 0 ]; then break; fi
+			repl=`echo "$repl" | sed 's/\*/\\\\'$int'/'`
+			int=$(($int+1))
+		fi
+	done
+	repl=`echo "$repl" | sed 's#/#\\\\/#'`
+	echo "'$find' -> '$repl'"
+
+	for i in *; do
+		x=`echo "$i" | sed -ne "s/$find/$repl/p"`
+		if [ -n "$x" ]; then
+			echo "'$i' -> '$x'"
+			if [ $nosafe -eq 1 ]; then mv "$i" "$x"; fi
+		fi
+	done
+else
+	echo "Recursive ReName by Wa (logicplace.com)"
+	echo "Usage: rrn FIND REPLACE [-s] [-c directory]"
+	echo "Note: Acts on current directory."
+	echo "Use * ** or ? to match dynamic parts of the name."
+	echo "  ? for 1 char, * for 0+ chars (non-greedy), ** for 0+ chars (greedy)."
+	echo "Each * in REPLACE is replaced with the respective * in FIND."
+	echo "Using & skips the respective * in FIND."
+	echo "You may use \\# notation to reference a specific entry. 1-based."
+	echo "For example, given a directory of the files: CRAPname1.ext and"
+	echo "CRAPname2.ext, where we want to remove 'CRAP', use:"
+	echo " rrn 'CRAP*' '*'"
+fi
+
+if [ -n "$oldcd" ]; then 
+	cd "$oldcd"
+fi
