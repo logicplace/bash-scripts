@@ -1,24 +1,67 @@
 #!/bin/bash
 
+
 oldcd=
 nosafe=1
-if [ "$3" == "-s" ]; then
-	echo "Running in safe mode, will not rename files."
-	nosafe=0;
-elif [ "$3" == "-c" ]; then
-	oldcd=`pwd`
-	cd "$4"
-fi
+verbose=
+find=
+repl=
+while [ -n "$1" ]; do
+	if [ "$1" == "-s" ]; then
+		echo "Running in safe mode, will not rename files."
+		nosafe=
+	elif [ "$1" == "-c" ]; then
+		oldcd=`pwd`
+		cd "$2"
+		shift
+	elif [ "$1" == "-v" ]; then
+		verbose=1
+	elif [ "${1:0:1}" != "-" ]; then
+		if [ -z "$find" ]; then
+			# Parse find
+			ast=
+			find="^"
+			for i in `seq 0 $(expr length "$1")`; do
+				c="${1:$i:1}"
 
-if [ "$4" == "-c" ]; then
-	oldcd=`pwd`
-	cd "$5"
-fi
+				if [ -n "$ast" ] && [ "$c" != "*" ]; then
+					# Non-greedy mode 0 or more chars
+					find="${find}\([^$c]*\)"
+					ast=
+				fi
 
-if [ $# -ge 2 ]; then
-	find='^'`echo "$1" | sed 's/\*-\(.\)$/\\\\([^\1]*\\\\)\1/g' | sed 's/\*/\\\\(.*\\\\)/g' | sed 's/\?/\\\\(.\\\\)/g' | sed 's#/#\\\\/#'`'$'
-	
-	repl="$2"
+				case "$c" in
+					# Match 0 or more chars
+					"*")
+						if [ $ast ]; then
+							# Greedy mode
+							find="${find}\\(.*\\)"
+							ast=
+						else
+							# Will it be greedy mode?
+							ast=1
+						fi
+						;;
+
+					# Match exactly one char
+					"?") find="${find}(.)"; ;;
+
+					# Escapes
+					"\\"|"/"|"."|"^"|"$"|"["|"]") find="${find}\\$c"; ;;
+
+					# Just match the char
+					*) find="${find}$c"; ;;
+				esac
+			done
+			find="${find}\$"
+		elif [ -z "$repl" ]; then
+			repl="$1"
+		fi
+	fi
+	shift
+done
+
+if [ -n "$repl" ]; then
 	int=1
 	while true; do
 		y=`expr index "$repl" "&"`
@@ -32,19 +75,23 @@ if [ $# -ge 2 ]; then
 		fi
 	done
 	repl=`echo "$repl" | sed 's#/#\\\\/#'`
-	echo "'$find' -> '$repl'"
+	if [ $verbose ]; then
+		echo "'$find' -> '$repl'"
+	fi
 
 	for i in *; do
 		x=`echo "$i" | sed -ne "s/$find/$repl/p"`
 		if [ -n "$x" ]; then
 			echo "'$i' -> '$x'"
-			if [ $nosafe -eq 1 ]; then mv "$i" "$x"; fi
+			if [ $nosafe ]; then mv "$i" "$x"; fi
 		fi
 	done
 else
 	echo "Recursive ReName by Wa (logicplace.com)"
-	echo "Usage: rrn FIND REPLACE [-s] [-c directory]"
-	echo "Note: Acts on current directory."
+	echo "Usage: rrn [-s] [-c directory] [-v] FIND REPLACE"
+	echo " -s Safe mode"
+	echo " -c Choose a directory to work in. (CWD by default)"
+	echo " -v Verbose mode"
 	echo "Use * ** or ? to match dynamic parts of the name."
 	echo "  ? for 1 char, * for 0+ chars (non-greedy), ** for 0+ chars (greedy)."
 	echo "Each * in REPLACE is replaced with the respective * in FIND."
@@ -54,6 +101,7 @@ else
 	echo "CRAPname2.ext, where we want to remove 'CRAP', use:"
 	echo " rrn 'CRAP*' '*'"
 fi
+
 
 if [ -n "$oldcd" ]; then 
 	cd "$oldcd"
